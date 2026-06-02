@@ -1,0 +1,109 @@
+import pandas as pd
+import networkx as nx
+import matplotlib.pyplot as plt
+
+# ==============================================================================
+# PIPELINE DE INTELIGÊNCIA LOGÍSTICA - ANÁLISE DE GRAFOS
+# ==============================================================================
+
+# ---------------------------------------------------------
+# 1. CONFIGURAÇÃO (Parâmetros de Entrada)
+# ---------------------------------------------------------
+# Se o arquivo mudar, basta alterar o caminho abaixo:
+caminho_arquivo = r'C:\Users\Isabela\Desktop\projeto_grafo_logistica\Projeto(limpeza e manipulação de dados).xlsx'
+
+print("Iniciando processamento de dados logísticos...")
+# ---------------------------------------------------------
+# 2. EXTRAÇÃO E LIMPEZA DE DADOS (ETL)
+# ---------------------------------------------------------
+# Carrega as abas brutas
+df_locais_bruto = pd.read_excel(caminho_arquivo, sheet_name='Locais')
+df_rotas_bruto = pd.read_excel(caminho_arquivo, sheet_name='Rotas')
+
+# Separa a coluna única (espremida por ponto e vírgula) em múltiplas colunas:
+
+nome_coluna_locais = df_locais.columns[0] 
+df_locais = df_locais[nome_coluna_locais].str.split(';', expand=True) 
+df_locais.columns = nome_coluna_locais.split(';') 
+
+nome_coluna_rotas = df_rotas.columns[0]
+df_rotas = df_rotas[nome_coluna_rotas].str.split(';', expand=True)
+df_rotas.columns = nome_coluna_rotas.split(';')
+
+# ---------------------------------------------------------
+# 3. MODELAGEM RELACIONAL (Cruzamento de IDs para Nomes)
+# ---------------------------------------------------------
+# Merge da Origem:
+
+df_analise = pd.merge(df_rotas, df_locais[['id_local', 'nome_local']], left_on='id_origem', right_on='id_local', how='left')
+df_analise.rename(columns={'nome_local': 'nome_da_origem'}, inplace=True)
+df_analise.drop(columns=['id_local'], inplace=True)
+
+# Merge do Destino:
+
+df_analise = pd.merge(df_analise, df_locais[['id_local', 'nome_local']], left_on='id_destino', right_on='id_local', how='left')
+df_analise.rename(columns={'nome_local': 'nome_do_destino'}, inplace=True)
+df_analise.drop(columns=['id_local'], inplace=True)
+
+# Conversão de tipos de dados numéricos para cálculos matemáticos:
+
+df_analise['distancia_km'] = pd.to_numeric(df_analise['distancia_km'])
+df_analise['tempo_estimado_min'] = pd.to_numeric(df_analise['tempo_estimado_min'])
+
+# ---------------------------------------------------------
+# 4. CONSTRUÇÃO DO GRAFO (Motor de Inteligência)
+# ---------------------------------------------------------
+grafo_logistica = nx.Graph()
+
+# Alimenta a rede com as rotas:
+
+for index, linha in df_analise.iterrows():
+    grafo_logistica.add_edge(
+        linha['nome_da_origem'], 
+        linha['nome_do_destino'], 
+        weight=linha['distancia_km'], 
+        tempo=linha['tempo_estimado_min'],
+        carga=linha['tipo_carga']
+    )
+
+print(f"Sucesso: Malha mapeada com {grafo_logistica.number_of_nodes()} pontos e {grafo_logistica.number_of_edges()} rotas.")
+
+# ---------------------------------------------------------
+# 5. ALGORITMO DE OTIMIZAÇÃO (Dijkstra)
+# ---------------------------------------------------------
+# Pega o primeiro e o último ponto da base dinamicamente para teste
+
+todos_os_locais = list(grafo_logistica.nodes())
+ponto_partida = todos_os_locais[0]
+ponto_chegada = todos_os_locais[-1]
+
+caminho_otimizado = nx.shortest_path(grafo_logistica, source=ponto_partida, target=ponto_chegada, weight='weight')
+distancia_total = nx.shortest_path_length(grafo_logistica, source=ponto_partida, target=ponto_chegada, weight='weight')
+
+print("\n=============================================")
+print("           INSIGHT DE OTIMIZAÇÃO             ")
+print("=============================================")
+print(f"Saindo de: {ponto_partida}")
+print(f"Destino:   {ponto_chegada}")
+print(f"Rota Ideal: {' -> '.join(caminho_otimizado)}")
+print(f"Distância:  {distancia_total} km")
+print("=============================================\n")
+
+# ---------------------------------------------------------
+# 6. EXPORTAÇÃO VISUAL (Dashboard Logístico)
+# ---------------------------------------------------------
+plt.figure(figsize=(12, 8))
+pos = nx.spring_layout(grafo_logistica, seed=42) # Mantém o layout consistente
+
+nx.draw(grafo_logistica, pos, with_labels=True, 
+        node_color='#4A90E2', node_size=2500, 
+        font_size=9, font_color='white', font_weight='bold', 
+        edge_color='gray', width=2)
+
+pesos_distancia = nx.get_edge_attributes(grafo_logistica, 'weight')
+nx.draw_networkx_edge_labels(grafo_logistica, pos, edge_labels=pesos_distancia, font_color='red')
+
+plt.title("Mapeamento da Malha Logística", fontsize=16, fontweight='bold')
+plt.show()
+
+para entrar no notebook(.ipynb)
